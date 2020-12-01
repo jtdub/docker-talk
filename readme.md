@@ -197,6 +197,120 @@ curl: (7) Failed to connect to localhost port 5000: Connection refused
 ```
 ## Exposing a container to the world
 
+To expose the containers tcp port to external environments, will need to allow the port to be exposed in the `Dockerfile`, build a new image, and then run the new image; telling docker to expose the port.
+
+In the `Dockerfile`, a new instruction will need to be added, telling docker to expose a tcp/ip port to the container. I've also modified the `Dockerfile` for a couple flask specific arguments.
+
+```
+FROM python:3.8-buster
+
+RUN pip install flask
+
+WORKDIR /src
+
+COPY app.py .
+
+ENV FLASK_APP=/src/app.py
+
+EXPOSE 5000/tcp
+
+CMD python -m flask run --host=0.0.0.0
+```
+With the `Dockerfile` modified, the docker image can be updated with the new instruction sets.
+
+```
+% docker build -t ntc-docker-app-demo:02 .
+[+] Building 0.8s (9/9) FINISHED
+ => [internal] load build definition from Dockerfile                                                                      0.0s
+ => => transferring dockerfile: 37B                                                                                       0.0s
+ => [internal] load .dockerignore                                                                                         0.0s
+ => => transferring context: 2B                                                                                           0.0s
+ => [internal] load metadata for docker.io/library/python:3.8-buster                                                      0.7s
+ => [1/4] FROM docker.io/library/python:3.8-buster@sha256:0598f5cb3942c525325099fc6f4e6111e75c2043701d9f76147321ff0c3a34  0.0s
+ => [internal] load build context                                                                                         0.0s
+ => => transferring context: 28B                                                                                          0.0s
+ => CACHED [2/4] RUN pip install flask                                                                                    0.0s
+ => CACHED [3/4] WORKDIR /src                                                                                             0.0s
+ => CACHED [4/4] COPY app.py .                                                                                            0.0s
+ => exporting to image                                                                                                    0.0s
+ => => exporting layers                                                                                                   0.0s
+ => => writing image sha256:474bbcfaf555631e92d474c84b822850fb102bc8153df381464bed409aaffae6                              0.0s
+ => => naming to docker.io/library/ntc-docker-app-demo:02
+```
+With the image upated, the old container can be stopped. Since we executed the container in interactive mode and didn't detatch from the container, we can use CNTRL-C to stop the container and then use the `docker rm` to remove the container.
+
+```
+% docker rm ntc-demo
+ntc-demo
+```
+
+Now we can start up the new container, adding the `-p` or `--publish` flag to expose the tcp/ip port that we wish to expose to the outside world.
+
+```
+% docker run -it --name ntc-demo -p 5000:5000 ntc-docker-app-demo:02
+ * Serving Flask app "/src/app.py"
+ * Environment: production
+   WARNING: This is a development server. Do not use it in a production deployment.
+   Use a production WSGI server instead.
+ * Debug mode: off
+ * Running on http://0.0.0.0:5000/ (Press CTRL+C to quit)
+```
+
+With the updated container running, we can use another terminal to see that docker is exposing the tcp/ip port.
+
+```
+% docker ps -a
+CONTAINER ID        IMAGE                    COMMAND                  CREATED             STATUS              PORTS                    NAMES
+c40ed8c8cab7        ntc-docker-app-demo:02   "/bin/sh -c 'python …"   5 minutes ago       Up 5 minutes        0.0.0.0:5000->5000/tcp   ntc-demo
+```
+
+We can also use `curl` to test the connection.
+
+```
+% curl -i localhost:5000
+HTTP/1.0 405 METHOD NOT ALLOWED
+Content-Type: text/html; charset=utf-8
+Allow: POST, OPTIONS
+Content-Length: 178
+Server: Werkzeug/1.0.1 Python/3.8.6
+Date: Tue, 01 Dec 2020 15:39:07 GMT
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<title>405 Method Not Allowed</title>
+<h1>Method Not Allowed</h1>
+<p>The method is not allowed for the requested URL.</p>
+
+% curl -i -X POST localhost:5000
+HTTP/1.0 200 OK
+Content-Type: text/html; charset=utf-8
+Content-Length: 228
+Server: Werkzeug/1.0.1 Python/3.8.6
+Date: Tue, 01 Dec 2020 15:39:22 GMT
+
+[
+    {
+        "id": 1,
+        "name": "joe",
+        "balance": 10
+    },
+    {
+        "id": 2,
+        "name": "bob",
+        "balance": -1
+    },
+    {
+        "id": 3,
+        "name": "fred",
+        "balance": 40
+    }
+]% 
+```
+You should also be able to see logs indicating the connections as well.
+
+```
+172.17.0.1 - - [01/Dec/2020 15:39:22] "POST / HTTP/1.1" 200 -
+```
+
 ## Mounting external volumes to a container
 
 ## Getting containers to talk to each other
