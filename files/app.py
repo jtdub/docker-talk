@@ -6,7 +6,7 @@ from flask import Flask
 
 app = Flask(__name__)
 
-@app.route("/", methods=["POST"])
+@app.route("/", methods=["GET"])
 def get_balance():
 
 	with open("./data/data.json") as f:

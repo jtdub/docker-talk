@@ -59,10 +59,6 @@ When the image is done building, you will be able to see it in your local invent
 % docker images
 REPOSITORY            TAG                 IMAGE ID            CREATED             SIZE
 ntc-docker-app-demo   01                  8aea11ce54a6        27 minutes ago      892MB
-cisco-nso-dev         5.3                 b0f08179570d        12 days ago         1.4GB
-cisco-nso-dev         5.3-jtdub           b0f08179570d        12 days ago         1.4GB
-cisco-nso-base        5.3                 774bf7740cbb        12 days ago         586MB
-cisco-nso-base        5.3-jtdub           774bf7740cbb        12 days ago         586MB
 ```
 
 ## Running a container
@@ -480,8 +476,234 @@ Date: Tue, 01 Dec 2020 21:20:14 GMT
 ]%
 ```
 ## Getting containers to talk to each other
+Docker containers can communicate to other containers. By default, all containers are spun up on `bridge` network (172.17.0.0/16).
+```
+% docker network inspect bridge
+[
+    {
+        "Name": "bridge",
+        "Id": "6cf132e1e0b4db3c54c610e0fd5166f57d8f8d5827a9f29429da129019e51864",
+        "Created": "2020-11-11T21:41:55.799662895Z",
+        "Scope": "local",
+        "Driver": "bridge",
+        "EnableIPv6": false,
+        "IPAM": {
+            "Driver": "default",
+            "Options": null,
+            "Config": [
+                {
+                    "Subnet": "172.17.0.0/16",
+                    "Gateway": "172.17.0.1"
+                }
+            ]
+        },
+        "Internal": false,
+        "Attachable": false,
+        "Ingress": false,
+        "ConfigFrom": {
+            "Network": ""
+        },
+        "ConfigOnly": false,
+        "Containers": {},
+        "Options": {
+            "com.docker.network.bridge.default_bridge": "true",
+            "com.docker.network.bridge.enable_icc": "true",
+            "com.docker.network.bridge.enable_ip_masquerade": "true",
+            "com.docker.network.bridge.host_binding_ipv4": "0.0.0.0",
+            "com.docker.network.bridge.name": "docker0",
+            "com.docker.network.driver.mtu": "1500"
+        },
+        "Labels": {}
+    }
+]
+```
+Any container on this network can ping and communicate with any other container by IP. If the containers know the name of another container on the network, it can ping it by name as well.
+
+To test this, spin up two containers. The second container will utilize the `--link` flag to specify the name of another container to connect to.
+```
+% docker run -itd --name ntc1 ntc-docker-app-demo:03
+ab94eb0c4f39cf22548d7d960e837fb10e1f94f4ae272eb03cd1b8b612eff2a5
+% docker run -itd --name ntc2 --link ntc1 ntc-docker-app-demo:03
+19ff532dd5988d3e28249c64ba087cad9009de6731ba9c506f4897a90c405f6b
+```
+Connect to the shell of the second container.
+```
+% docker exec -it ntc2 bash
+```
+In the shell you will notice that the containers `/etc/hosts` was updated with the entry of `ntc1`. Docker performed this action when the `--link` argument was passed.
+```
+root@19ff532dd598:/src# cat /etc/hosts
+127.0.0.1	localhost
+::1	localhost ip6-localhost ip6-loopback
+fe00::0	ip6-localnet
+ff00::0	ip6-mcastprefix
+ff02::1	ip6-allnodes
+ff02::2	ip6-allrouters
+172.17.0.2	ntc1 ab94eb0c4f39
+172.17.0.3	19ff532dd598
+```
+This allows you to communicate with the neighboring container by name.
+```
+root@19ff532dd598:/src# ping -c 2 ntc1
+PING ntc1 (172.17.0.2) 56(84) bytes of data.
+64 bytes from ntc1 (172.17.0.2): icmp_seq=1 ttl=64 time=0.089 ms
+64 bytes from ntc1 (172.17.0.2): icmp_seq=2 ttl=64 time=0.281 ms
+
+--- ntc1 ping statistics ---
+2 packets transmitted, 2 received, 0% packet loss, time 36ms
+rtt min/avg/max/mdev = 0.089/0.185/0.281/0.096 ms
+```
+DNS, however, does not know how to resolve to `ntc1`:
+```
+root@19ff532dd598:/src# dig ntc1
+
+; <<>> DiG 9.11.5-P4-5.1+deb10u2-Debian <<>> ntc1
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 13916
+;; flags: qr rd ra; QUERY: 1, ANSWER: 0, AUTHORITY: 0, ADDITIONAL: 0
+
+;; QUESTION SECTION:
+;ntc1.				IN	A
+
+;; Query time: 1 msec
+;; SERVER: 192.168.65.1#53(192.168.65.1)
+;; WHEN: Tue Dec 01 21:43:37 UTC 2020
+;; MSG SIZE  rcvd: 22
+```
+The corresponding `ntc1` container does not know how to communicate with `ntc2` by name, because it was not spun up with the `--link` argument. The `--link` argument can not be issued until the container being linked exists. It can communicate with the corresponding container by IP, however.
+```
+root@ab94eb0c4f39:/src# ping ntc2
+ping: ntc2: Name or service not known
+root@ab94eb0c4f39:/src# ping -c 3 172.17.0.3
+PING 172.17.0.3 (172.17.0.3) 56(84) bytes of data.
+64 bytes from 172.17.0.3: icmp_seq=1 ttl=64 time=0.235 ms
+64 bytes from 172.17.0.3: icmp_seq=2 ttl=64 time=0.126 ms
+64 bytes from 172.17.0.3: icmp_seq=3 ttl=64 time=0.220 ms
+
+--- 172.17.0.3 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 50ms
+rtt min/avg/max/mdev = 0.126/0.193/0.235/0.050 ms
+```
+With that in mind, let's create a container that fetches the data from the `ntc-docker-app-demo` and presents some data.
+```
+% docker build -t ntc-docker-app1-demo:01 -f Dockerfile1 .
+[+] Building 5.8s (9/9) FINISHED
+ => [internal] load build definition from Dockerfile1                                                                     0.0s
+ => => transferring dockerfile: 215B                                                                                      0.0s
+ => [internal] load .dockerignore                                                                                         0.0s
+ => => transferring context: 2B                                                                                           0.0s
+ => [internal] load metadata for docker.io/library/python:3.8-buster                                                      0.8s
+ => CACHED [1/4] FROM docker.io/library/python:3.8-buster@sha256:0598f5cb3942c525325099fc6f4e6111e75c2043701d9f76147321f  0.0s
+ => [internal] load build context                                                                                         0.0s
+ => => transferring context: 459B                                                                                         0.0s
+ => [2/4] RUN pip install flask requests                                                                                  4.6s
+ => [3/4] WORKDIR /src                                                                                                    0.0s
+ => [4/4] COPY app1.py .                                                                                                  0.0s
+ => exporting to image                                                                                                    0.3s
+ => => exporting layers                                                                                                   0.3s
+ => => writing image sha256:889097ab766ffbadeb91c8e47536a4be49d82380660e140724e01f779c4f80aa                              0.0s
+ => => naming to docker.io/library/ntc-docker-app1-demo:01
+```
+```
+% docker images
+REPOSITORY             TAG                 IMAGE ID            CREATED             SIZE
+ntc-docker-app1-demo   01                  889097ab766f        24 seconds ago      895MB
+ntc-docker-app-demo    03                  0d72789132d0        About an hour ago   892MB
+ntc-docker-app-demo    02                  474bbcfaf555        8 hours ago         892MB
+ntc-docker-app-demo    01                  8aea11ce54a6        8 hours ago         892MB
+```
+The new app is simple. It simply performs an HTTP GET to `ntc1` and returns the results.
+```
+#!/usr/bin/env python
+
+import json
+import requests
+from flask import Flask, request
+
+app = Flask(__name__)
+
+
+@app.route("/", methods=["GET"])
+def accounts():
+	return json.dumps(requests.get('http://ntc1:5000').json(), indent=2)
+
+
+if __name__ == "__main__":
+	app.run()
+```
+With the new image created, we can spin up the two containers and watch their interactions.
+```
+% docker run -itd --name ntc1 -v ${PWD}/data:/src/data ntc-docker-app-demo:03
+fc419fca7f4ae6d40bce55677674af6a9a5ee38aa56dd0a38b9c3ceaf3fcadb8
+% docker run -itd --name ntc2 --link ntc1 -p 5000:5000 ntc-docker-app1-demo:01
+bde63fa7ed47cb870ec93d57e9a9c46955947c436fda11d45613be5a716e4ef4
+```
+We can verify that the containers are running.
+```
+% docker ps -a
+CONTAINER ID        IMAGE                     COMMAND                  CREATED             STATUS              PORTS                    NAMES
+3f11adba93e8        ntc-docker-app1-demo:01   "/bin/sh -c 'python …"   56 seconds ago      Up 54 seconds       0.0.0.0:5000->5000/tcp   ntc2
+fc419fca7f4a        ntc-docker-app-demo:03    "/bin/sh -c 'python …"   7 minutes ago       Up 7 minutes        5000/tcp                 ntc1
+```
+We can use `curl` to fetch the data from `ntc2`, which is listening on tcp port 5000.
+```
+% curl -i localhost:5000
+HTTP/1.0 200 OK
+Content-Type: text/html; charset=utf-8
+Content-Length: 238
+Server: Werkzeug/1.0.1 Python/3.8.6
+Date: Tue, 01 Dec 2020 22:38:32 GMT
+
+[
+  {
+    "id": 1,
+    "name": "joe",
+    "balance": 10
+  },
+  {
+    "id": 2,
+    "name": "bob",
+    "balance": -1
+  },
+  {
+    "id": 3,
+    "name": "fred",
+    "balance": 40
+  },
+  {
+    "id": 4,
+    "name": "ed",
+    "balance": 20
+  }
+]%
+```
 
 ## Docker logs
+Docker logs can be used to determine what is happening within a container. We can use the logs to see the network communications between `ntc1` and `ntc2` and the curl client to `ntc2`.
+```
+% docker logs ntc1
+ * Serving Flask app "/src/app.py"
+ * Environment: production
+   WARNING: This is a development server. Do not use it in a production deployment.
+   Use a production WSGI server instead.
+ * Debug mode: off
+ * Running on http://0.0.0.0:5000/ (Press CTRL+C to quit)
+172.17.0.3 - - [01/Dec/2020 22:30:45] "GET / HTTP/1.1" 200 -
+172.17.0.3 - - [01/Dec/2020 22:34:48] "GET / HTTP/1.1" 200 -
+172.17.0.3 - - [01/Dec/2020 22:36:35] "GET / HTTP/1.1" 200 -
+172.17.0.3 - - [01/Dec/2020 22:38:32] "GET / HTTP/1.1" 200 -
+% docker logs ntc2
+ * Serving Flask app "/src/app1.py"
+ * Environment: production
+   WARNING: This is a development server. Do not use it in a production deployment.
+   Use a production WSGI server instead.
+ * Debug mode: off
+ * Running on http://0.0.0.0:5000/ (Press CTRL+C to quit)
+172.17.0.1 - - [01/Dec/2020 22:36:35] "GET / HTTP/1.1" 200 -
+172.17.0.1 - - [01/Dec/2020 22:38:32] "GET / HTTP/1.1" 200 - 
+```
+As you can see, `docker logs` can be useful for troubleshooting container problems.
 
 ## Learning materials:
 - [] https://developer.cisco.com/learning/lab/docker-101/step/1
