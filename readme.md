@@ -313,6 +313,172 @@ You should also be able to see logs indicating the connections as well.
 
 ## Mounting external volumes to a container
 
+It's often handy to be able to have data read on storage that's external to the container. It can make the container smaller and can make the container more flexible. The downside is that the container can only run on hosts that have access to the data that the container needs to access.
+
+To simulate this, we'll offload the data that the flask app uses and store it as a json file outside of the container.
+
+Code before change:
+
+```python
+#!/usr/bin/env python3
+
+import json
+from flask import Flask
+
+
+app = Flask(__name__)
+
+@app.route("/", methods=["POST"])
+def get_balance():
+	data = [
+		{"id": 1, "name": "joe", "balance": 10},
+		{"id": 2, "name": "bob", "balance": -1},
+		{"id": 3, "name": "fred", "balance": 40},
+	]
+
+	return json.dumps(data, indent=4)
+
+
+if __name__ == "__main__":
+	app.run()
+```
+
+JSON file:
+
+```
+% cat ./data/data.json
+[
+    {"id": 1, "name": "joe", "balance": 10},
+    {"id": 2, "name": "bob", "balance": -1},
+    {"id": 3, "name": "fred", "balance": 40}
+]
+```
+
+Code after change:
+
+```python
+#!/usr/bin/env python3
+
+import json
+from flask import Flask
+
+
+app = Flask(__name__)
+
+@app.route("/", methods=["POST"])
+def get_balance():
+
+	with open("./data/data.json") as f:
+		data = json.loads(f.read())
+
+	return json.dumps(data, indent=4)
+
+
+if __name__ == "__main__":
+	app.run()
+```
+
+With the JSON data pulled out and the code modified, we just need to update the image.
+
+```
+% docker build -t ntc-docker-app-demo:03 .
+[+] Building 1.1s (9/9) FINISHED
+ => [internal] load .dockerignore                                                                                         0.0s
+ => => transferring context: 2B                                                                                           0.0s
+ => [internal] load build definition from Dockerfile                                                                      0.0s
+ => => transferring dockerfile: 37B                                                                                       0.0s
+ => [internal] load metadata for docker.io/library/python:3.8-buster                                                      0.9s
+ => [1/4] FROM docker.io/library/python:3.8-buster@sha256:0598f5cb3942c525325099fc6f4e6111e75c2043701d9f76147321ff0c3a34  0.0s
+ => [internal] load build context                                                                                         0.0s
+ => => transferring context: 317B                                                                                         0.0s
+ => CACHED [2/4] RUN pip install flask                                                                                    0.0s
+ => CACHED [3/4] WORKDIR /src                                                                                             0.0s
+ => [4/4] COPY app.py .                                                                                                   0.0s
+ => exporting to image                                                                                                    0.0s
+ => => exporting layers                                                                                                   0.0s
+ => => writing image sha256:0d72789132d0037e3a3a43c8a8c4d0c840eec06f3963975e102ea649a59d5c6d                              0.0s
+ => => naming to docker.io/library/ntc-docker-app-demo:03
+```
+Now, when we run the container, we need to specify the external volume to mount. This is done with the `-v` or `--volume` argument.
+```
+% docker run -it --name ntc-demo -p 5000:5000 -v ${PWD}/data:/src/data ntc-docker-app-demo:03
+ * Serving Flask app "/src/app.py"
+ * Environment: production
+   WARNING: This is a development server. Do not use it in a production deployment.
+   Use a production WSGI server instead.
+ * Debug mode: off
+ * Running on http://0.0.0.0:5000/ (Press CTRL+C to quit)
+```
+`${PWD}/data` maps the local data path to the container `/src/data` path.
+
+Issuing a `curl` should result in the same result as the previous test.
+```
+% curl -i -X POST localhost:5000
+HTTP/1.0 200 OK
+Content-Type: text/html; charset=utf-8
+Content-Length: 228
+Server: Werkzeug/1.0.1 Python/3.8.6
+Date: Tue, 01 Dec 2020 21:16:57 GMT
+
+[
+    {
+        "id": 1,
+        "name": "joe",
+        "balance": 10
+    },
+    {
+        "id": 2,
+        "name": "bob",
+        "balance": -1
+    },
+    {
+        "id": 3,
+        "name": "fred",
+        "balance": 40
+    }
+]%
+```
+The JSON can be modified, with the container running and a subsequent `curl` request will display the updated content.
+```
+% cat data/data.json
+[
+    {"id": 1, "name": "joe", "balance": 10},
+    {"id": 2, "name": "bob", "balance": -1},
+    {"id": 3, "name": "fred", "balance": 40},
+    {"id": 4, "name": "ed", "balance": 20}
+]
+```
+```
+% curl -i -X POST localhost:5000
+HTTP/1.0 200 OK
+Content-Type: text/html; charset=utf-8
+Content-Length: 302
+Server: Werkzeug/1.0.1 Python/3.8.6
+Date: Tue, 01 Dec 2020 21:20:14 GMT
+
+[
+    {
+        "id": 1,
+        "name": "joe",
+        "balance": 10
+    },
+    {
+        "id": 2,
+        "name": "bob",
+        "balance": -1
+    },
+    {
+        "id": 3,
+        "name": "fred",
+        "balance": 40
+    },
+    {
+        "id": 4,
+        "name": "ed",
+        "balance": 20
+    }
+]%
+```
 ## Getting containers to talk to each other
 
 ## Docker logs
