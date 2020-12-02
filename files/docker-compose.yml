@@ -1,0 +1,16 @@
+version: "3.8"
+services:
+  ntc1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+    - ${PWD}/data:/src/data
+  ntc2:
+    build:
+      context: .
+      dockerfile: Dockerfile1
+    ports:
+    - "5000:5000"
+    links:
+    - "ntc1"
