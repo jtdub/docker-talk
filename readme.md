@@ -705,6 +705,306 @@ Docker logs can be used to determine what is happening within a container. We ca
 ```
 As you can see, `docker logs` can be useful for troubleshooting container problems.
 
+## Docker-compose
+Docker compose allows a user to define a suite of containers and orchestrate their lifecycle. The services are defined within a yaml file. Below is a docker-compose yaml file describing what we've done to this point, but all contained in the yaml file.
+```yaml
+% cat docker-compose.yml
+version: "3.8"
+services:
+  ntc1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+    - ${PWD}/data:/src/data
+  ntc2:
+    build:
+      context: .
+      dockerfile: Dockerfile1
+    ports:
+    - "5000:5000"
+    links:
+    - "ntc1"
+```
+To spin up the containers, execute `docker-compose up`.
+```
+% docker-compose up
+Starting files_ntc1_1 ... done
+Starting files_ntc2_1 ... done
+Attaching to files_ntc1_1, files_ntc2_1
+ntc1_1  |  * Serving Flask app "/src/app.py"
+ntc1_1  |  * Environment: production
+ntc1_1  |    WARNING: This is a development server. Do not use it in a production deployment.
+ntc1_1  |    Use a production WSGI server instead.
+ntc1_1  |  * Debug mode: off
+ntc1_1  |  * Running on http://0.0.0.0:5000/ (Press CTRL+C to quit)
+ntc2_1  |  * Serving Flask app "/src/app1.py"
+ntc2_1  |  * Environment: production
+ntc2_1  |    WARNING: This is a development server. Do not use it in a production deployment.
+ntc2_1  |    Use a production WSGI server instead.
+ntc2_1  |  * Debug mode: off
+ntc2_1  |  * Running on http://0.0.0.0:5000/ (Press CTRL+C to quit)
+```
+We can verify that the containers are running with the `docker ps -a` command. Within this command, you can also see that the `ntc2` container has tcp port 5000 exposed to the external network.
+```
+% docker ps -a
+CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS              PORTS                    NAMES
+e0d789eacd34        files_ntc2          "/bin/sh -c 'python …"   5 minutes ago       Up About a minute   0.0.0.0:5000->5000/tcp   files_ntc2_1
+97a71f49cd0e        files_ntc1          "/bin/sh -c 'python …"   9 minutes ago       Up About a minute   5000/tcp                 files_ntc1_1
+```
+The same `curl` test can be performed to ensure that the apps are working properly.
+```
+% curl -i localhost:5000
+HTTP/1.0 200 OK
+Content-Type: text/html; charset=utf-8
+Content-Length: 238
+Server: Werkzeug/1.0.1 Python/3.8.6
+Date: Tue, 01 Dec 2020 23:24:16 GMT
+
+[
+  {
+    "id": 1,
+    "name": "joe",
+    "balance": 10
+  },
+  {
+    "id": 2,
+    "name": "bob",
+    "balance": -1
+  },
+  {
+    "id": 3,
+    "name": "fred",
+    "balance": 40
+  },
+  {
+    "id": 4,
+    "name": "ed",
+    "balance": 20
+  }
+]%
+```
+The `docker-compose logs` command can display the relevant logging information.
+```
+ % docker-compose logs
+Attaching to files_ntc2_1, files_ntc1_1
+ntc2_1  |  * Serving Flask app "/src/app1.py"
+ntc2_1  |  * Environment: production
+ntc2_1  |    WARNING: This is a development server. Do not use it in a production deployment.
+ntc2_1  |    Use a production WSGI server instead.
+ntc2_1  |  * Debug mode: off
+ntc2_1  |  * Running on http://0.0.0.0:5000/ (Press CTRL+C to quit)
+ntc2_1  | 172.20.0.1 - - [01/Dec/2020 23:17:40] "GET / HTTP/1.1" 200 -
+ntc2_1  |  * Serving Flask app "/src/app1.py"
+ntc2_1  |  * Environment: production
+ntc2_1  |    WARNING: This is a development server. Do not use it in a production deployment.
+ntc2_1  |    Use a production WSGI server instead.
+ntc2_1  |  * Debug mode: off
+ntc2_1  |  * Running on http://0.0.0.0:5000/ (Press CTRL+C to quit)
+ntc2_1  | 172.20.0.1 - - [01/Dec/2020 23:24:04] "GET / HTTP/1.1" 200 -
+ntc2_1  | 172.20.0.1 - - [01/Dec/2020 23:24:16] "GET / HTTP/1.1" 200 -
+ntc1_1  |  * Serving Flask app "/src/app.py"
+ntc1_1  |  * Environment: production
+ntc1_1  |    WARNING: This is a development server. Do not use it in a production deployment.
+ntc1_1  |    Use a production WSGI server instead.
+ntc1_1  |  * Debug mode: off
+ntc1_1  |  * Running on http://0.0.0.0:5000/ (Press CTRL+C to quit)
+ntc1_1  |  * Serving Flask app "/src/app.py"
+ntc1_1  |  * Environment: production
+ntc1_1  |    WARNING: This is a development server. Do not use it in a production deployment.
+ntc1_1  |    Use a production WSGI server instead.
+ntc1_1  |  * Debug mode: off
+ntc1_1  |  * Running on http://0.0.0.0:5000/ (Press CTRL+C to quit)
+ntc1_1  |  * Serving Flask app "/src/app.py"
+ntc1_1  |  * Environment: production
+ntc1_1  |    WARNING: This is a development server. Do not use it in a production deployment.
+ntc1_1  |    Use a production WSGI server instead.
+ntc1_1  |  * Debug mode: off
+ntc1_1  |  * Running on http://0.0.0.0:5000/ (Press CTRL+C to quit)
+ntc1_1  | 172.20.0.3 - - [01/Dec/2020 23:17:40] "GET / HTTP/1.1" 200 -
+ntc1_1  |  * Serving Flask app "/src/app.py"
+ntc1_1  |  * Environment: production
+ntc1_1  |    WARNING: This is a development server. Do not use it in a production deployment.
+ntc1_1  |    Use a production WSGI server instead.
+ntc1_1  |  * Debug mode: off
+ntc1_1  |  * Running on http://0.0.0.0:5000/ (Press CTRL+C to quit)
+ntc1_1  | 172.20.0.3 - - [01/Dec/2020 23:24:04] "GET / HTTP/1.1" 200 -
+ntc1_1  | 172.20.0.3 - - [01/Dec/2020 23:24:16] "GET / HTTP/1.1" 200 -
+```
+To shutdown the containers, you can use CNTRL-C, if you haven't detached from the container sessions. If you're detached, you can use the `docker-compose down` command to tear down the containers.
+```
+^CGracefully stopping... (press Ctrl+C again to force)
+Stopping files_ntc2_1 ... done
+Stopping files_ntc1_1 ... done
+```
+
+The docker-compose yaml file can be used to define a wide range of arguments for the containers, such as spinning up replicas to do load balancing with or restarting containers if they fail. Information of these arguments can be found on the [docker website](https://docs.docker.com/compose/compose-file/).
+
+## Docker Swarm
+
+Docker swarm is the docker equivelant of kubernetes. It's a container orchestration platform. It's not widely used as kubernetes has taken on the defacto orchestration platform for containers. [Play with Docker](http://play-with-docker.com/) is a quick and easy way to play with a docker swarm testbed.
+
+First, initialize the docker swarm master on `node1`:
+```
+$ docker swarm init --advertise-addr 192.168.0.28
+Swarm initialized: current node (r5c3r3t8o3h71a1it6fns9ge7) is now a manager.
+
+To add a worker to this swarm, run the following command:
+
+    docker swarm join --token SWMTKN-1-5eut931plqesiizfe8txa18y5ur0sp1iqu2wacv4442s8f7ll3-92nkpybn7l96eubgwkwjz5f4y 192.168.0.28:2377
+
+To add a manager to this swarm, run 'docker swarm join-token manager' and follow the instructions.
+
+[node1] (local) root@192.168.0.28 ~
+```
+Next, on `node2` join the swarm.
+```
+$ docker swarm join --token SWMTKN-1-5eut931plqesiizfe8txa18y5ur0sp1iqu2wacv4442s8f7ll3-92nkpybn7l96eubgwkwjz5f4y 192.168.0.28:2377
+This node joined a swarm as a worker.
+[node2] (local) root@192.168.0.27 ~
+$ 
+```
+This same process can be followed for as many nodes as you want.
+```
+[node3] (local) root@192.168.0.26 ~
+docker swarm join --token SWMTKN-1-5eut931plqesiizfe8txa18y5ur0sp1iqu2wacv4442s8f7ll3-92nkpybn7l96eubgwkwjz5f4y 192.168.0.28:2377
+This node joined a swarm as a worker.
+[node3] (local) root@192.168.0.26 ~
+$ 
+```
+On `node1`, you should be able to see all the nodes in the swarm, with the `docker node` command.
+```
+$ docker node ls
+ID                            HOSTNAME            STATUS              AVAILABILITY        MANAGER STATUS      ENGINE VERSION
+r5c3r3t8o3h71a1it6fns9ge7 *   node1               Ready               Active              Leader              19.03.11
+ryt6qsalextb8v5psf03qtmbk     node2               Ready               Active                                  19.03.11
+1dunrhdc9a30iwo2869m6tx8q     node3               Ready               Active                                  19.03.11
+[node1] (local) root@192.168.0.28 ~
+$ 
+```
+I built the docker containers on `node1` and updated the `docker-compose.yml` file to just define the images. This is because docker swarm can't build the containers on the fly. It's relying on pre-built images.
+```
+version: "3.8"
+services:
+  ntc1:
+    image: ntc1:latest
+    ports:
+    - "5000:5000"
+```
+```
+$ docker build -t ntc1 .
+Sending build context to Docker daemon   7.68kB
+Step 1/8 : FROM python:3.8-buster
+ ---> c0e1d3033786
+Step 2/8 : RUN pip install flask
+ ---> Running in 773aae0b7a38
+Collecting flask
+  Downloading Flask-1.1.2-py2.py3-none-any.whl (94 kB)
+Collecting click>=5.1
+  Downloading click-7.1.2-py2.py3-none-any.whl (82 kB)
+Collecting Werkzeug>=0.15
+  Downloading Werkzeug-1.0.1-py2.py3-none-any.whl (298 kB)
+Collecting Jinja2>=2.10.1
+  Downloading Jinja2-2.11.2-py2.py3-none-any.whl (125 kB)
+Collecting itsdangerous>=0.24
+  Downloading itsdangerous-1.1.0-py2.py3-none-any.whl (16 kB)
+Collecting MarkupSafe>=0.23
+  Downloading MarkupSafe-1.1.1-cp38-cp38-manylinux1_x86_64.whl (32 kB)
+Installing collected packages: click, Werkzeug, MarkupSafe, Jinja2, itsdangerous, flask
+Successfully installed Jinja2-2.11.2 MarkupSafe-1.1.1 Werkzeug-1.0.1 click-7.1.2 flask-1.1.2 itsdangerous-1.1.0
+WARNING: You are using pip version 20.2.4; however, version 20.3 is available.
+You should consider upgrading via the '/usr/local/bin/python -m pip install --upgrade pip' command.
+Removing intermediate container 773aae0b7a38
+ ---> 0f42daaf7ef6
+Step 3/8 : WORKDIR /src
+ ---> Running in 5997b91d98b7
+Removing intermediate container 5997b91d98b7
+ ---> 3217ed0d4c1a
+Step 4/8 : COPY app.py .
+ ---> 43359e5eb619
+Step 5/8 : COPY data/data.json data/data.json
+ ---> e6282e3a712d
+Step 6/8 : ENV FLASK_APP=/src/app.py
+ ---> Running in 9ec179b56431
+Removing intermediate container 9ec179b56431
+ ---> f82cdd1c3c42
+Step 7/8 : EXPOSE 5000/tcp
+ ---> Running in 9681b792a14e
+Removing intermediate container 9681b792a14e
+ ---> dc441d2895ec
+Step 8/8 : CMD python -m flask run --host=0.0.0.0
+ ---> Running in 3146a692261f
+Removing intermediate container 3146a692261f
+ ---> 928b0f4704f4
+Successfully built 928b0f4704f4
+Successfully tagged ntc1:latest
+[node1] (local) root@192.168.0.28 ~/docker-talk/files
+$ 
+```
+The next thing to do is to deploy the container stack on `docker swarm`.
+```
+$ docker deploy -c docker-compose.yml ntc-demo
+Creating network ntc-demo_default
+Creating service ntc-demo_ntc1
+```
+You can verify that the application stack has been deployed with `docker stack ls` and `docker stack ps ntc-demo`
+```
+$ docker stack ls
+NAME                SERVICES            ORCHESTRATOR
+ntc-demo            1                   Swarm
+[node1] (local) root@192.168.0.28 ~/docker-talk/files
+$ docker stack ps ntc-demo
+ID                  NAME                IMAGE               NODE                DESIRED STATE       CURRENT STATE            ERROR               PORTS
+j6knszx8x9ok        ntc-demo_ntc1.1     ntc1:latest         node1               Running             Running 44 seconds ago                       
+[node1] (local) root@192.168.0.28 ~/docker-talk/files
+```
+The `ntc-demo` stack was deployed on `node1`.
+```
+$ docker stack services ntc-demo
+ID                  NAME                MODE                REPLICAS            IMAGE               PORTS
+7v0h7wp1duir        ntc-demo_ntc1       replicated          1/1                 ntc1:latest         *:5000->5000/tcp
+[node1] (local) root@192.168.0.28 ~/docker-talk/files
+$ docker psa- 
+docker: 'psa-' is not a docker command.
+See 'docker --help'
+[node1] (local) root@192.168.0.28 ~/docker-talk/files
+$ docker ps -a
+CONTAINER ID        IMAGE               COMMAND                  CREATED              STATUS              PORTS               NAMES
+11f8ce902a5f        ntc1:latest         "/bin/sh -c 'python …"   About a minute ago   Up About a minute   5000/tcp            ntc-demo_ntc1.1.j6knszx8x9ok4b4spezz0u1p9
+[node1] (local) root@192.168.0.28 ~/docker-talk/files
+$ curl localhost:5000
+[
+    {
+        "id": 1,
+        "name": "joe",
+        "balance": 10
+    },
+    {
+        "id": 2,
+        "name": "bob",
+        "balance": -1
+    },
+    {
+        "id": 3,
+        "name": "fred",
+        "balance": 40
+    },
+    {
+        "id": 4,
+        "name": "ed",
+        "balance": 20
+    }
+```
+To tear down the application stack, issue the `docker stack rm ntc-demo` command.
+
+```
+$ docker stack rm ntc-demo
+Removing service ntc-demo_ntc1
+Removing network ntc-demo_default
+[node1] (local) root@192.168.0.28 ~/docker-talk/files
+$ 
+```
+
 ## Learning materials:
 - [] https://developer.cisco.com/learning/lab/docker-101/step/1
 - [] https://developer.cisco.com/learning/lab/docker-201/step/1
